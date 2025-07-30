@@ -1,0 +1,29 @@
+'###################################################
+'### Trace script          			 			 ###
+'### By Jeroen Teeuwen, Motto VoIP		       	 ###
+'### 28-12-2011            			 			 ###
+'###################################################
+
+Option Explicit
+
+'Variabelen
+Dim IP, command, FILTER, INT, strUSERNAME, strPASSWORD
+Dim ws
+Dim Return
+
+
+'Inputbox
+IP = (InputBox("Enter the target IP(ex. 172.16.20.1)" , "Target"))
+FILTER = (InputBox("Enter tshark filter (udp port 5060)","Filter","udp port 5060"))
+INT = (InputBox("Enter interface","Interfacename","eth0"))
+strUSERNAME = (InputBox( "Please enter your Username:" ))
+strPASSWORD = (InputBox( "Please enter your password:" ))
+
+'Set ws als shell object
+Set ws = WScript.CreateObject("WScript.Shell")
+
+' Run vanuit cmd.exe plink en execute een connectie naar Amsterdam en push de output vervolgens terug naar Wireshark.
+' Wireshark needs to be in "C:\Wireshark" !!
+ws.run "c:\Windows\System32\cmd.exe /K %UserProfile%\Downloads\plink.exe -l " &strUSERNAME& " -pw " &strPASSWORD& " " &IP& " tcpdump -i " &INT& " -w - " &FILTER& " | ""c:\Wireshark\wireshark.exe"" -k -i -"
+'-i %UserProfile%\Downloads\jteeuwen.ppk root
+ws.run "%comspec% /k echo Host: " & Host & " & echo Filter: " & Filter & " & c:\Putty\plink.exe root@" & Host & " -pw mijnpassword tshark -i " & Interface & " -w - '(not tcp port 22) and " & Filter & "' | C:\Wireshark\Wireshark.exe -k -i -"
