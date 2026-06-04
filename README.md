@@ -47,10 +47,7 @@ chmod +x RemoteTrace/trace.sh
 # Remote: direct SSH with password
 ./trace.sh -h 192.168.1.1 -i eth0 -f 'port 443' -u root -w mypassword -p 22
 
-# Via jump host (auto-discover target IP + password via 'f' script)
-./trace.sh -h myserver -i eth0 -f 'udp' -J bastion.example.com -U jumpuser -W jumppass
-
-# Via jump host (manual target)
+# Via jump host to a target
 ./trace.sh -h 10.0.0.5 -i eth0 -f 'port 5060' -J bastion.example.com -U jumpuser -W jumppass -u root -p 22
 
 # Pipe to VoIP analyzer instead of Wireshark
@@ -113,8 +110,7 @@ A GUI appears. Fill in your connection details and click **Start**. Wireshark op
 
 | Mode | Description |
 |------|-------------|
-| Jump Server + Auto-Discovery | SSH to jump host, run `f <name>` to discover target IP + password automatically |
-| Jump Server + Manual Target | SSH to jump host, then to a manually specified target |
+| Jump Server | SSH through a bastion host to a manually specified target |
 | Direct Connection | SSH directly to target host |
 
 ### How Windows piping works
@@ -159,6 +155,16 @@ MIT
 ---
 
 ## Release notes
+
+### [1.0.1] - 2026-06-04
+
+#### Changed
+- Removed auto-discovery mode — it relied on a proprietary internal script not suitable for public use
+- Jump host mode now requires explicit target host, user, port, and credentials on both platforms
+- `RemoteTrace.ps1` dropdown simplified to "Jump Server" and "Direct Connection"
+- All status/error messages in `trace.sh` translated to English
+
+---
 
 ### [1.0.0] - 2026-06-04
 

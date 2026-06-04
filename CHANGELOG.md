@@ -5,6 +5,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.1] - 2026-06-04
+
+### Changed
+- Removed auto-discovery mode ("Jump Server + Auto-Discovery") from both `trace.sh` and `RemoteTrace.ps1` — this feature relied on a proprietary internal script and is not suitable for public use
+- Jump host mode now always requires explicit target host, user, port, and credentials
+- `RemoteTrace.ps1` connection mode dropdown simplified to "Jump Server" and "Direct Connection"
+- All Dutch-language status/error messages in `trace.sh` translated to English
+
+---
+
 ## [1.0.0] - 2026-06-04
 
 ### Added

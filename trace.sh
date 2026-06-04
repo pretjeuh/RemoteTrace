@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 WIRESHARK_BIN="wireshark"
 USE_SUDO=false
 DIRECT_MODE=false
@@ -15,37 +15,38 @@ PROMPT_PASSWORDS=false
 usage() {
   echo "RemoteTrace v$VERSION — remote tcpdump to Wireshark/analyzer"
   echo ""
-  echo "Gebruik: $0 -h <host> -i <interface> -f <filter> [opties]"
+  echo "Usage: $0 -h <host> -i <interface> -f <filter> [options]"
   echo ""
-  echo "Verplichte opties:"
-  echo "  -h <host>         Target host (waar tcpdump wordt uitgevoerd)"
-  echo "  -i <interface>    Netwerk interface op target host"
+  echo "Required:"
+  echo "  -h <host>         Target host (where tcpdump runs)"
+  echo "  -i <interface>    Network interface on target"
   echo "  -f <filter>       tcpdump BPF filter"
   echo ""
-  echo "Verbinding:"
-  echo "  -u <user>         SSH gebruiker voor target host"
-  echo "  -w <password>     SSH wachtwoord (gebruik -P voor interactief)"
-  echo "  -p <port>         SSH poort (default: 22)"
-  echo "  -k <key>          Pad naar SSH private key"
+  echo "Connection:"
+  echo "  -u <user>         SSH user for target host"
+  echo "  -w <password>     SSH password (use -P for interactive prompt)"
+  echo "  -p <port>         SSH port (default: 22)"
+  echo "  -k <key>          Path to SSH private key"
   echo "  -A                SSH agent forwarding"
-  echo "  -P                Vraag om wachtwoord(en) interactief"
-  echo "  -D                Direct mode — tcpdump lokaal op deze machine"
-  echo "  -s                Gebruik sudo voor tcpdump"
+  echo "  -P                Prompt for passwords interactively"
+  echo "  -D                Direct mode — run tcpdump on this machine"
+  echo "  -s                Use sudo for tcpdump"
   echo ""
   echo "Jump host:"
   echo "  -J <jump_host>    Jump/bastion host"
-  echo "  -U <jump_user>    SSH gebruiker jump host"
-  echo "  -W <jump_pass>    SSH wachtwoord jump host"
-  echo "  -R <jump_port>    SSH poort jump host (default: 22)"
+  echo "  -U <jump_user>    SSH user for jump host"
+  echo "  -W <jump_pass>    SSH password for jump host"
+  echo "  -R <jump_port>    SSH port for jump host (default: 22)"
   echo ""
   echo "Output:"
-  echo "  -O <tool>         'wireshark' of 'analyzer' (default: wireshark)"
-  echo "  -V <path>         Pad naar VoIP analyzer (als niet in PATH)"
+  echo "  -O <tool>         'wireshark' (default) or 'analyzer'"
+  echo "  -V <path>         Path to VoIP analyzer (if not in PATH)"
   echo ""
-  echo "Voorbeelden:"
+  echo "Examples:"
   echo "  $0 -D -i eth0 -f 'port 80'"
   echo "  $0 -h 192.168.1.1 -i eth0 -f 'port 443' -u root -k ~/.ssh/id_rsa -p 22"
-  echo "  $0 -h target -i eth0 -f 'udp' -J bastion.example.com -U jumpuser -W pass"
+  echo "  $0 -h 192.168.1.1 -i eth0 -f 'port 443' -u root -w mypass -p 22"
+  echo "  $0 -h 10.0.0.5 -i eth0 -f 'udp' -J bastion.example.com -U jumpuser -W jumppass -u root -p 22"
   exit 1
 }
 
@@ -79,26 +80,32 @@ done
 
 if [[ "$DIRECT_MODE" == true ]]; then
   [[ -z "$REMOTE_INTERFACE" || -z "$FILTER" ]] && {
-    echo "[FOUT] Direct mode vereist -i en -f." >&2; usage
+    echo "[ERROR] Direct mode requires -i and -f." >&2; usage
   }
   if [[ "$USE_SUDO" != true && $EUID -ne 0 ]]; then
-    echo "[WAARSCHUWING] Zonder sudo of root zijn tcpdump-rechten mogelijk onvoldoende (-s voor sudo)."
+    echo "[WARNING] Without sudo or root, tcpdump may lack capture permissions (use -s for sudo)."
   fi
 else
   [[ -z "$REMOTE_HOST" || -z "$REMOTE_INTERFACE" || -z "$FILTER" ]] && {
-    echo "[FOUT] -h, -i en -f zijn verplicht voor remote mode." >&2; usage
+    echo "[ERROR] -h, -i and -f are required for remote mode." >&2; usage
   }
   if [[ -n "$JUMP_HOST" ]]; then
-    [[ -z "$JUMP_USER" ]] && { echo "[FOUT] Jump host vereist -U (jump user)." >&2; usage; }
+    [[ -z "$JUMP_USER" ]] && { echo "[ERROR] Jump host requires -U (jump user)." >&2; usage; }
     [[ -z "$JUMP_PASSWORD" && "$PROMPT_PASSWORDS" != true && "$USE_SSH_KEY" != true ]] && {
-      echo "[FOUT] Jump host vereist -W, -k of -P." >&2; usage
+      echo "[ERROR] Jump host requires -W, -k or -P." >&2; usage
+    }
+    [[ -z "$REMOTE_USER" || -z "$SSH_PORT" ]] && {
+      echo "[ERROR] Jump host mode requires -u (target user) and -p (target port)." >&2; usage
+    }
+    [[ -z "$SSH_PASSWORD" && "$PROMPT_PASSWORDS" != true && "$USE_SSH_KEY" != true ]] && {
+      echo "[ERROR] Target host requires -w, -k or -P." >&2; usage
     }
   else
     [[ -z "$REMOTE_USER" || -z "$SSH_PORT" ]] && {
-      echo "[FOUT] Directe SSH vereist -u en -p." >&2; usage
+      echo "[ERROR] Direct SSH requires -u and -p." >&2; usage
     }
     [[ -z "$SSH_PASSWORD" && "$PROMPT_PASSWORDS" != true && "$USE_SSH_KEY" != true ]] && {
-      echo "[FOUT] Directe SSH vereist -w, -k of -P." >&2; usage
+      echo "[ERROR] Direct SSH requires -w, -k or -P." >&2; usage
     }
   fi
 fi
@@ -124,15 +131,15 @@ if [[ "$OUTPUT_TOOL" == "analyzer" ]]; then
     fi
   fi
   [[ -z "$ANALYZER_PATH" ]] && {
-    echo "[FOUT] VoIP analyzer niet gevonden." >&2
-    echo "  Installeer: cd ~/Downloads/claude/voip-analyser && pip install -e ." >&2
-    echo "  Of geef pad op met -V" >&2
+    echo "[ERROR] VoIP analyzer not found." >&2
+    echo "  Install: cd ~/Downloads/claude/voip-analyser && pip install -e ." >&2
+    echo "  Or specify path with -V" >&2
     exit 1
   }
   echo "[INFO] Output → VoIP analyzer"
 else
   command -v "$WIRESHARK_BIN" &>/dev/null || {
-    echo "[FOUT] Wireshark niet gevonden in PATH." >&2
+    echo "[ERROR] Wireshark not found in PATH." >&2
     echo "  macOS: brew install --cask wireshark" >&2
     echo "  Linux: apt install wireshark / dnf install wireshark" >&2
     exit 1
@@ -144,12 +151,13 @@ fi
 
 if [[ "$PROMPT_PASSWORDS" == true ]]; then
   if [[ "$DIRECT_MODE" == true ]]; then
-    read -rsp "Password voor lokale sudo: " SSH_PASSWORD; echo
+    read -rsp "Local sudo password: " SSH_PASSWORD; echo
   elif [[ -z "$JUMP_HOST" ]]; then
-    read -rsp "SSH password voor $REMOTE_USER@$REMOTE_HOST: " SSH_PASSWORD; echo
+    read -rsp "SSH password for $REMOTE_USER@$REMOTE_HOST: " SSH_PASSWORD; echo
   fi
   if [[ -n "$JUMP_HOST" ]]; then
-    read -rsp "SSH password voor $JUMP_USER@$JUMP_HOST: " JUMP_PASSWORD; echo
+    read -rsp "SSH password for $JUMP_USER@$JUMP_HOST: " JUMP_PASSWORD; echo
+    read -rsp "SSH password for $REMOTE_USER@$REMOTE_HOST: " SSH_PASSWORD; echo
   fi
 fi
 
@@ -216,15 +224,15 @@ echo "[INFO] Interface: $REMOTE_INTERFACE | Filter: $FILTER | Sudo: $USE_SUDO"
 
 # --- Direct mode ---
 if [[ "$DIRECT_MODE" == true ]]; then
-  echo "[INFO] Direct mode — lokale tcpdump"
+  echo "[INFO] Direct mode — local tcpdump"
   _iface_exists "$REMOTE_INTERFACE" || {
-    echo "[FOUT] Interface '$REMOTE_INTERFACE' niet gevonden."
-    echo "Beschikbare interfaces:"
+    echo "[ERROR] Interface '$REMOTE_INTERFACE' not found."
+    echo "Available interfaces:"
     _list_ifaces
     exit 1
   }
-  _confirm || { echo "[INFO] Geannuleerd."; exit 0; }
-  echo "[INFO] Starten..."
+  _confirm || { echo "[INFO] Cancelled."; exit 0; }
+  echo "[INFO] Starting..."
   if [[ "$USE_SUDO" == true ]]; then
     if [[ -n "$SSH_PASSWORD" ]]; then
       printf '%s\n' "$SSH_PASSWORD" | sudo -S tcpdump -i "$REMOTE_INTERFACE" -U -s 0 -w - -- "$FILTER" 2>/dev/null | "${OUTPUT_CMD[@]}"
@@ -237,59 +245,50 @@ if [[ "$DIRECT_MODE" == true ]]; then
 
 # --- Jump host mode ---
 elif [[ -n "$JUMP_HOST" ]]; then
-  echo "[INFO] Via jump host $JUMP_USER@$JUMP_HOST:$JUMP_PORT → $REMOTE_HOST"
+  echo "[INFO] Via jump host $JUMP_USER@$JUMP_HOST:$JUMP_PORT → $REMOTE_USER@$REMOTE_HOST:$SSH_PORT"
 
+  TCPDUMP_CMD=$(_build_tcpdump_cmd)
+
+  _confirm || { echo "[INFO] Cancelled."; exit 0; }
+  echo "[INFO] Starting..."
+
+  # Use OpenSSH ProxyJump (-J) — cleaner than nested SSH and works with both key and password auth
   if [[ "$USE_SSH_KEY" == true ]]; then
     echo "[INFO] SSH key: $SSH_KEY_PATH"
-    JUMP_SSH=(ssh "${SSH_OPTS[@]}" -i "$SSH_KEY_PATH" -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST")
-  else
+    ssh "${SSH_OPTS[@]}" -i "$SSH_KEY_PATH" \
+      -J "$JUMP_USER@$JUMP_HOST:$JUMP_PORT" \
+      -p "$SSH_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+      "$TCPDUMP_CMD" | "${OUTPUT_CMD[@]}"
+  elif [[ -n "$SSH_PASSWORD" ]]; then
     command -v sshpass &>/dev/null || {
-      echo "[FOUT] sshpass niet gevonden (vereist voor password-auth via jump host)." >&2
+      echo "[ERROR] sshpass not found (required for password auth)." >&2
       echo "  macOS: brew install hudochenkov/sshpass/sshpass" >&2
       echo "  Linux: apt install sshpass" >&2
       exit 1
     }
-    JUMP_SSH=(sshpass -p "$JUMP_PASSWORD" ssh "${SSH_OPTS[@]}" -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST")
-  fi
-
-  echo "[INFO] Target info ophalen via 'f' script..."
-  FULL_OUTPUT=$("${JUMP_SSH[@]}" "f $(_remote_escape "$REMOTE_HOST") all 2>/dev/null")
-  CLEAN_OUTPUT=$(printf '%s' "$FULL_OUTPUT" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
-
-  TARGET_IP=$(printf '%s' "$CLEAN_OUTPUT" | grep -i 'ssh_ip' | sed 's/.*:[[:space:]]*//' | tr -d ' *' | head -1)
-  ACCESS_PWD=$(printf '%s' "$CLEAN_OUTPUT" | grep -i 'access_pwd:' | sed 's/.*access_pwd:[[:space:]]*//' | sed 's/[[:space:]]*$//' | head -1)
-
-  [[ -z "$TARGET_IP" || -z "$ACCESS_PWD" ]] && {
-    echo "[FOUT] Kon IP of wachtwoord van '$REMOTE_HOST' niet ophalen." >&2
-    echo "[DEBUG] TARGET_IP='$TARGET_IP'" >&2
-    echo "[DEBUG] ACCESS_PWD='${ACCESS_PWD:0:3}...'" >&2
-    exit 1
-  }
-  echo "[INFO] Target IP: $TARGET_IP"
-
-  TCPDUMP_CMD=$(_build_tcpdump_cmd)
-
-  _confirm || { echo "[INFO] Geannuleerd."; exit 0; }
-  echo "[INFO] Starten..."
-
-  if [[ "$SSH_AGENT_FORWARDING" == true && "$USE_SSH_KEY" == true ]]; then
-    # Agent forwarding: inner SSH uses forwarded agent, no password needed
-    SSH_OPTS_STR="${SSH_OPTS[*]}"
-    "${JUMP_SSH[@]}" "ssh $SSH_OPTS_STR -p 22 root@\"$TARGET_IP\" \"$TCPDUMP_CMD\"" | "${OUTPUT_CMD[@]}"
+    # sshpass only handles one password; for jump+target both needing passwords,
+    # set JUMP_SSH_COMMAND so OpenSSH uses sshpass for the jump leg too
+    export JUMP_SSH_COMMAND="sshpass -p $(printf '%q' "$JUMP_PASSWORD") ssh ${SSH_OPTS[*]}"
+    sshpass -p "$SSH_PASSWORD" ssh "${SSH_OPTS[@]}" \
+      -o "ProxyCommand=sshpass -p $(printf '%q' "$JUMP_PASSWORD") ssh ${SSH_OPTS[*]} -W %h:%p -p $JUMP_PORT $JUMP_USER@$JUMP_HOST" \
+      -p "$SSH_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+      "$TCPDUMP_CMD" | "${OUTPUT_CMD[@]}"
   else
-    ESCAPED_PWD=$(_remote_escape "$ACCESS_PWD")
-    SSH_OPTS_STR="${SSH_OPTS[*]}"
-    "${JUMP_SSH[@]}" "sshpass -p \"$ESCAPED_PWD\" ssh $SSH_OPTS_STR -p 22 root@\"$TARGET_IP\" \"$TCPDUMP_CMD\"" | "${OUTPUT_CMD[@]}"
+    # No explicit credentials — rely on ssh-agent or default key for both hops
+    ssh "${SSH_OPTS[@]}" \
+      -J "$JUMP_USER@$JUMP_HOST:$JUMP_PORT" \
+      -p "$SSH_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+      "$TCPDUMP_CMD" | "${OUTPUT_CMD[@]}"
   fi
 
 # --- Direct SSH mode ---
 else
-  echo "[INFO] Directe SSH → $REMOTE_USER@$REMOTE_HOST:$SSH_PORT"
+  echo "[INFO] Direct SSH → $REMOTE_USER@$REMOTE_HOST:$SSH_PORT"
 
   TCPDUMP_CMD=$(_build_tcpdump_cmd)
 
-  _confirm || { echo "[INFO] Geannuleerd."; exit 0; }
-  echo "[INFO] Starten..."
+  _confirm || { echo "[INFO] Cancelled."; exit 0; }
+  echo "[INFO] Starting..."
 
   if [[ "$USE_SSH_KEY" == true ]]; then
     echo "[INFO] SSH key: $SSH_KEY_PATH"
@@ -297,7 +296,7 @@ else
       "$REMOTE_USER@$REMOTE_HOST" "$TCPDUMP_CMD" | "${OUTPUT_CMD[@]}"
   elif [[ -n "$SSH_PASSWORD" ]]; then
     command -v sshpass &>/dev/null || {
-      echo "[FOUT] sshpass niet gevonden." >&2; exit 1
+      echo "[ERROR] sshpass not found." >&2; exit 1
     }
     sshpass -p "$SSH_PASSWORD" ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" \
       "$REMOTE_USER@$REMOTE_HOST" "$TCPDUMP_CMD" | "${OUTPUT_CMD[@]}"

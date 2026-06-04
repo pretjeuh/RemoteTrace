@@ -8,7 +8,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$VERSION = "1.0.0"
+$VERSION = "1.0.1"
 
 # ---------- GUI ----------
 
@@ -56,7 +56,7 @@ function Show-ConfigForm {
     $modeCombo.Location = New-Object System.Drawing.Point(165, $y)
     $modeCombo.Size = New-Object System.Drawing.Size($iw, 20)
     $modeCombo.DropDownStyle = 'DropDownList'
-    $modeCombo.Items.AddRange(@('Jump Server + Auto-Discovery', 'Jump Server + Manual Target', 'Direct Connection'))
+    $modeCombo.Items.AddRange(@('Jump Server', 'Direct Connection'))
     $modeCombo.SelectedIndex = 0
     $form.Controls.Add($modeCombo)
     $y += $sp
@@ -115,31 +115,21 @@ function Show-ConfigForm {
     # Dynamic field visibility
     $UpdateVisibility = {
         $mode   = $modeCombo.SelectedItem
-        $isJump = $mode -ne 'Direct Connection'
-        $isAuto = $mode -eq 'Jump Server + Auto-Discovery'
+        $isJump = $mode -eq 'Jump Server'
 
         foreach ($row in @($jumpHostRow, $jumpUserRow, $jumpPassRow)) {
             $row.Label.Visible = $isJump
             $row.Input.Visible = $isJump
         }
-        $targetNameRow.Label.Visible = $isAuto
-        $targetNameRow.Input.Visible = $isAuto
+        $targetNameRow.Label.Visible = $false
+        $targetNameRow.Input.Visible = $false
 
-        if ($isAuto) {
-            $targetHostRow.Input.Text      = '(auto-discovered)'
-            $targetHostRow.Input.ReadOnly  = $true
-            $targetHostRow.Input.BackColor = [System.Drawing.SystemColors]::Control
-            $targetPassRow.Input.Text      = '(auto-discovered)'
-            $targetPassRow.Input.ReadOnly  = $true
-            $targetPassRow.Input.BackColor = [System.Drawing.SystemColors]::Control
-        } else {
-            $targetHostRow.Input.Text      = '192.168.1.100'
-            $targetHostRow.Input.ReadOnly  = $false
-            $targetHostRow.Input.BackColor = [System.Drawing.SystemColors]::Window
-            $targetPassRow.Input.Text      = ''
-            $targetPassRow.Input.ReadOnly  = $false
-            $targetPassRow.Input.BackColor = [System.Drawing.SystemColors]::Window
-        }
+        $targetHostRow.Input.Text      = '192.168.1.100'
+        $targetHostRow.Input.ReadOnly  = $false
+        $targetHostRow.Input.BackColor = [System.Drawing.SystemColors]::Window
+        $targetPassRow.Input.Text      = ''
+        $targetPassRow.Input.ReadOnly  = $false
+        $targetPassRow.Input.BackColor = [System.Drawing.SystemColors]::Window
     }
     $modeCombo.add_SelectedIndexChanged($UpdateVisibility)
     & $UpdateVisibility
@@ -366,27 +356,11 @@ try {
             finally { if ($askpass) { Remove-SshAskPass -Path $askpass } }
         }
 
-        'Jump Server + Manual Target' {
+        'Jump Server' {
             $sshArgs = $sshOpts + @(
                 '-J', "$($cfg.JumpUser)@$($cfg.JumpHost)",
                 '-p', $cfg.TargetPort,
                 "$($cfg.TargetUser)@$($cfg.TargetHost)",
-                $tcpdumpCmd
-            )
-            $askpass = Set-SshAskPass -Password $cfg.JumpPassword
-            try   { Start-Capture -SshExe $sshExe -SshArgs $sshArgs -WiresharkPath $wsPath }
-            finally { Remove-SshAskPass -Path $askpass }
-        }
-
-        'Jump Server + Auto-Discovery' {
-            $details = Get-TargetDetails -SshExe $sshExe -SshOpts $sshOpts `
-                -JumpUser $cfg.JumpUser -JumpPassword $cfg.JumpPassword `
-                -JumpHost $cfg.JumpHost -TargetName $cfg.TargetName
-
-            $sshArgs = $sshOpts + @(
-                '-J', "$($cfg.JumpUser)@$($cfg.JumpHost)",
-                '-p', '22',
-                "root@$($details.IP)",
                 $tcpdumpCmd
             )
             $askpass = Set-SshAskPass -Password $cfg.JumpPassword
