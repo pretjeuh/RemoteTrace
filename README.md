@@ -89,7 +89,7 @@ Filters are passed safely to the remote tcpdump regardless of spaces, parenthese
 
 ---
 
-## RemoteTrace.ps1 — Windows
+## RemoteTrace.ps1 — Windows (public)
 
 ### Requirements
 
@@ -110,12 +110,22 @@ A GUI appears. Fill in your connection details and click **Start**. Wireshark op
 
 | Mode | Description |
 |------|-------------|
-| Jump Server | SSH through a bastion host to a manually specified target |
-| Direct Connection | SSH directly to target host |
+| Direct Connection | SSH directly to the target host |
+| Jump Server | SSH through a configurable bastion host to the target |
+
+### Authentication options (per hop)
+
+Both the jump server and the target host have an independent auth selector:
+
+| Mode | Description |
+|------|-------------|
+| Password | Enter a password; delivered via `SSH_ASKPASS` — no interactive prompt |
+| SSH Key (Agent) | Uses your running SSH agent; passes `-A` to forward it to the target |
+| Key File | Browse to a `.pem` / `.ppk` / `.key` file; passes `-i <path>` to ssh |
 
 ### How Windows piping works
 
-Previous versions used `plink.exe` piped through `cmd.exe`, which corrupts binary PCAP data (text-mode `\r\n` translation). `RemoteTrace.ps1` now uses `System.Diagnostics.Process` to wire `ssh.exe` stdout directly to Wireshark's stdin as a raw byte stream — no corruption possible.
+`RemoteTrace.ps1` uses `System.Diagnostics.Process` to wire `ssh.exe` stdout directly to Wireshark's stdin as a raw byte stream, bypassing `cmd.exe` entirely. This eliminates the text-mode `\r\n` translation that corrupts PCAP data in pipe-based approaches.
 
 ---
 
@@ -155,6 +165,18 @@ MIT
 ---
 
 ## Release notes
+
+### [2.0.0] - 2026-06-07
+
+#### Added
+- `RemoteTrace-Voclarion.ps1` — internal build with `***REMOVED***` pre-configured and auto-discovery via `f <name>` script
+- `RemoteTrace.ps1` now fully generic with configurable jump host and flexible auth per hop
+
+#### Changed
+- Per-hop auth mode: Password, SSH Key (Agent), or Key File (with browse button)
+- No hardcoded hosts, users, or credentials in the public build
+
+---
 
 ### [1.0.1] - 2026-06-04
 

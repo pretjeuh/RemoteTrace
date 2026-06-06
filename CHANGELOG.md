@@ -5,6 +5,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.0.0] - 2026-06-07
+
+### Added
+- **`RemoteTrace-Voclarion.ps1`** — Voclarion-specific Windows build:
+  - Jump host pre-configured to `***REMOVED***` (read-only in GUI)
+  - Auto-Discover Target mode: runs `f <name>` on jump host to resolve IP and credentials automatically
+  - Manual Target mode: explicit host, user, password, port
+- **`RemoteTrace.ps1`** now fully generic — no hardcoded hosts, users, or credentials
+
+### Changed
+- `RemoteTrace.ps1` jump/target fields start blank; user fills in their own infrastructure
+- Added per-hop auth mode selector for both jump server and target host:
+  - `Password` — SSH_ASKPASS mechanism, no interactive prompt
+  - `SSH Key (Agent)` — agent forwarding (`-A`), no password needed
+  - `Key File` — browse button opens file picker, passes `-i <path>` to ssh
+- Capture Filter now defaults to empty (capture all) in the public build
+- Both scripts bumped to v2.0.0
+
+---
+
 ## [1.0.1] - 2026-06-04
 
 ### Changed
