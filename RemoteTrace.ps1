@@ -1,4 +1,4 @@
-# RemoteTrace v1.0.0
+﻿# RemoteTrace v1.0.0
 # Remote tcpdump to Wireshark — Windows PowerShell
 # Uses built-in OpenSSH (ssh.exe, ships with Windows 10 1803+)
 # No plink, no sshpass, no extra dependencies.
