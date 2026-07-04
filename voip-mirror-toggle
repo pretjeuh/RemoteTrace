@@ -1,0 +1,104 @@
+#!/bin/bash
+# voip-mirror-toggle — start/stop the VoIP Analyzer reading from the
+# active RemoteTrace mirror PCAP file.
+#
+# Usage:
+#   voip-mirror-toggle on      # start analyzer if a capture is running
+#   voip-mirror-toggle off     # stop analyzer
+#   voip-mirror-toggle toggle  # flip current state (default)
+#   voip-mirror-toggle status  # report current state
+#
+# Reads/writes ~/.remotetrace/state written by trace.sh v2.1.0+.
+
+set -u
+
+STATE_FILE="$HOME/.remotetrace/state"
+
+_die() { echo "[ERROR] $1" >&2; exit 1; }
+
+[[ -f "$STATE_FILE" ]] || _die "No active capture (state file missing: $STATE_FILE)"
+
+# shellcheck disable=SC1090
+. "$STATE_FILE"
+
+: "${mirror_file:?mirror_file missing from state}"
+: "${web_port:=7654}"
+analyzer_pid="${analyzer_pid:-}"
+
+[[ -f "$mirror_file" ]] || _die "Mirror PCAP missing: $mirror_file"
+
+_analyzer_alive() {
+  [[ -n "$analyzer_pid" ]] && kill -0 "$analyzer_pid" 2>/dev/null
+}
+
+_find_analyzer_cmd() {
+  if python3 -m voip_analyzer --help &>/dev/null 2>&1; then
+    echo "python3 -m voip_analyzer"
+    return 0
+  fi
+  if [[ -d "$HOME/Downloads/claude/voip-analyser" ]] && \
+     PYTHONPATH="$HOME/Downloads/claude/voip-analyser" python3 -m voip_analyzer --help &>/dev/null 2>&1; then
+    export PYTHONPATH="$HOME/Downloads/claude/voip-analyser:${PYTHONPATH:-}"
+    echo "python3 -m voip_analyzer"
+    return 0
+  fi
+  return 1
+}
+
+_update_state_pid() {
+  local new_pid="$1"
+  sed -i.bak "s|^analyzer_pid=.*|analyzer_pid=$new_pid|" "$STATE_FILE"
+  rm -f "${STATE_FILE}.bak"
+}
+
+_start() {
+  if _analyzer_alive; then
+    echo "[INFO] Analyzer already running (pid $analyzer_pid)"
+    return 0
+  fi
+  local cmd
+  cmd=$(_find_analyzer_cmd) || _die "VoIP analyzer not found"
+
+  # shellcheck disable=SC2086
+  ( tail -c +0 -f "$mirror_file" | $cmd web --port "$web_port" ) &
+  local new_pid=$!
+  echo "[INFO] Analyzer started (pid $new_pid) → http://localhost:$web_port"
+  _update_state_pid "$new_pid"
+
+  if command -v open &>/dev/null; then
+    open "http://localhost:$web_port" &
+  elif command -v xdg-open &>/dev/null; then
+    xdg-open "http://localhost:$web_port" &
+  fi
+}
+
+_stop() {
+  if ! _analyzer_alive; then
+    echo "[INFO] Analyzer not running"
+    _update_state_pid ""
+    return 0
+  fi
+  pkill -P "$analyzer_pid" 2>/dev/null || true
+  kill "$analyzer_pid" 2>/dev/null || true
+  echo "[INFO] Analyzer stopped (was pid $analyzer_pid)"
+  _update_state_pid ""
+}
+
+case "${1:-toggle}" in
+  on|start) _start ;;
+  off|stop) _stop ;;
+  toggle)
+    if _analyzer_alive; then _stop; else _start; fi
+    ;;
+  status)
+    if _analyzer_alive; then
+      echo "analyzer: ON (pid $analyzer_pid, port $web_port)"
+    else
+      echo "analyzer: OFF"
+    fi
+    ;;
+  *)
+    echo "Usage: $0 [on|off|toggle|status]" >&2
+    exit 1
+    ;;
+esac

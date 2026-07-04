@@ -5,6 +5,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] - 2026-07-04
+
+### Added
+- **Single-stream mirror** (`trace.sh`): in Wireshark output mode (`-O wireshark`), the live PCAP is tee'd into `~/.remotetrace/mirror-<timestamp>.pcap` while Wireshark streams from it. One SSH, one tcpdump — no second remote session.
+- **VoIP Analyzer toggle**: pressing `a` + Enter during a Wireshark capture starts/stops the analyzer by tailing the mirror file. Fully reversible.
+- **New output modes** (`trace.sh`): `-O both` (Wireshark live + VoIP Analyzer live, PCAP auto-saved, post-capture report) and `-O web` (VoIP Analyzer web dashboard with SSE live charts, browser auto-opens).
+- **`-o <file>`** flag: save raw PCAP alongside any output mode.
+- **`-n <port>`** flag: configure web dashboard port (default 7654).
+- **VoIP Analyzer auto-detection** from PATH or `~/Downloads/claude/voip-analyser`.
+- **State file** `~/.remotetrace/state` with `mirror_file`, `trace_pid`, `web_port`, `started_at`, `analyzer_pid` — consumed by external controllers.
+- **`voip-mirror-toggle`** helper: `voip-mirror-toggle on|off|toggle|status` controls the analyzer against the active capture from any shell.
+- **SwiftBar menubar plugin** (`menubar/RemoteTrace.5s.sh`): macOS menubar shows capture state and lets the user toggle the analyzer + open the dashboard without touching the terminal.
+- **`EXTENSIONS.md`** — design doc covering alternative mirror strategies (FIFO drain, dumpcap ringbuffer) and GUI options (SwiftBar, native SwiftUI, Tauri) for future versions.
+
+### Changed
+- Wireshark mode startup message mentions "mirror PCAP" and "toggle" instead of "second capture".
+- `trace.sh` bumped to v2.1.0 (previously versioned independently as 1.x; now aligned with the repo-wide version).
+
+---
+
 ## [2.0.0] - 2026-06-07
 
 ### Added
