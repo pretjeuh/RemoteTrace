@@ -7,3 +7,9 @@ EXTENSIONS.md
 
 # Voclarion-specific build (internal, not for public repo)
 RemoteTrace-Voclarion.ps1
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

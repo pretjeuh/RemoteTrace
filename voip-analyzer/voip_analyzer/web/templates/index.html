@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoIP Analyzer Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222536;
+      --border: #2e3249;
+      --accent: #4f7ef8;
+      --text: #e2e6f0;
+      --muted: #8890a8;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --radius: 10px;
+    }
+
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: .02em; }
+    .badge { font-size: .7rem; background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 99px; letter-spacing: .05em; text-transform: uppercase; }
+    #live-indicator { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
+    #live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+    #live-dot.active { background: var(--good); box-shadow: 0 0 6px var(--good); }
+
+    main { padding: 24px 28px; display: grid; gap: 24px; }
+
+    .stat-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; }
+    .stat-card .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .stat-card .value { font-size: 1.9rem; font-weight: 700; margin-top: 4px; }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .panel-header {
+      padding: 12px 20px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      font-size: .8rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-header .count { background: var(--border); color: var(--text); font-size: .7rem; padding: 1px 7px; border-radius: 99px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    thead th { padding: 10px 14px; text-align: left; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 10px 14px; white-space: nowrap; }
+
+    .mos-pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: .75rem; font-weight: 600; }
+    .mos-pill.excellent { background: rgba(52,211,153,.15); color: var(--good); }
+    .mos-pill.good      { background: rgba(52,211,153,.08); color: #86efac; }
+    .mos-pill.fair      { background: rgba(251,191,36,.12); color: var(--warn); }
+    .mos-pill.poor      { background: rgba(248,113,113,.12); color: var(--bad); }
+    .mos-pill.bad       { background: rgba(248,113,113,.2); color: var(--bad); }
+
+    .empty-row td { text-align: center; color: var(--muted); padding: 28px; font-style: italic; }
+
+    /* Call state pills (reuse mos-pill sizing) */
+    .state-pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: .75rem; font-weight: 600; }
+    .state-pill.answered, .state-pill.ended { background: rgba(52,211,153,.15); color: var(--good); }
+    .state-pill.ringing, .state-pill.trying { background: rgba(251,191,36,.12); color: var(--warn); }
+    .state-pill.cancelled { background: rgba(248,113,113,.12); color: #fca5a5; }
+    .state-pill.failed    { background: rgba(248,113,113,.2); color: var(--bad); }
+
+    /* Call rows expand to show a ladder diagram */
+    tr.call-row { cursor: pointer; }
+    tr.call-row .expand-caret { display: inline-block; width: 12px; color: var(--muted); transition: transform .15s; }
+    tr.call-row.expanded .expand-caret { transform: rotate(90deg); }
+    tr.ladder-row td { padding: 0; background: var(--bg); }
+    tr.ladder-row .ladder-wrap { padding: 18px 20px; overflow-x: auto; }
+    .ladder-meta { font-size: .75rem; color: var(--muted); margin-bottom: 10px; }
+    .ladder-svg text { font-family: 'Segoe UI', system-ui, sans-serif; fill: var(--text); }
+    .ladder-svg .lifeline { stroke: var(--border); stroke-width: 1.5; }
+    .ladder-svg .lifeline-label { fill: var(--muted); font-size: 11px; font-weight: 600; }
+    .ladder-svg .msg-line { stroke: var(--accent); stroke-width: 1.5; }
+    .ladder-svg .msg-line.response { stroke: var(--good); }
+    .ladder-svg .msg-label { font-size: 11px; }
+    .ladder-svg .msg-label.response { fill: #86efac; }
+
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 36px 24px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; background: var(--surface);
+    }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(79,126,248,.05); }
+    .upload-zone p { color: var(--muted); font-size: .88rem; margin-top: 8px; }
+    .upload-zone input { display: none; }
+    .btn { display: inline-block; padding: 8px 20px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: .85rem; cursor: pointer; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .chart-card h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 12px; }
+    .chart-card canvas { max-height: 220px; }
+
+    #upload-result { display: none; }
+    #upload-error { color: var(--bad); font-size: .85rem; padding: 10px 0; display: none; }
+
+    .spinner { width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 20px; }
+    .tab { padding: 10px 16px; font-size: .82rem; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; padding: 20px; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>VoIP Analyzer</h1>
+  <span class="badge">Dashboard</span>
+  <div id="live-indicator">
+    <div id="live-dot"></div>
+    <span id="live-label">Idle</span>
+  </div>
+</header>
+
+<main>
+  <div class="stat-bar">
+    <div class="stat-card"><div class="label">Total Packets</div><div class="value" id="stat-total">—</div></div>
+    <div class="stat-card"><div class="label">RTP Packets</div><div class="value" id="stat-rtp">—</div></div>
+    <div class="stat-card"><div class="label">Active Streams</div><div class="value" id="stat-active">—</div></div>
+    <div class="stat-card"><div class="label">Completed</div><div class="value" id="stat-completed">—</div></div>
+    <div class="stat-card"><div class="label">Calls</div><div class="value" id="stat-calls">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="tab-bar">
+      <div class="tab active" data-tab="live">Live Capture</div>
+      <div class="tab" data-tab="upload">Upload PCAP</div>
+      <div class="tab" data-tab="calls">Calls</div>
+    </div>
+
+    <!-- Live tab -->
+    <div id="tab-live" class="tab-content active">
+      <div class="panel-header">Active Streams <span class="count" id="active-count">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Flow</th><th>Codec</th><th>Packets</th><th>Loss %</th><th>Jitter avg ms</th><th>Jitter max ms</th><th>MOS</th><th>R-Factor</th><th>Duration</th></tr></thead>
+          <tbody id="active-body"><tr class="empty-row"><td colspan="9">Waiting for live capture stream…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel-header" style="margin-top:1px;">Completed Streams <span class="count" id="completed-count">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Flow</th><th>Codec</th><th>Packets</th><th>Loss %</th><th>Jitter avg ms</th><th>Jitter max ms</th><th>MOS</th><th>R-Factor</th><th>Duration</th></tr></thead>
+          <tbody id="completed-body"><tr class="empty-row"><td colspan="9">No completed streams yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div style="padding:16px;">
+        <div class="charts-grid">
+          <div class="chart-card"><h3>MOS over time (active streams)</h3><canvas id="chart-mos"></canvas></div>
+          <div class="chart-card"><h3>Jitter avg ms over time</h3><canvas id="chart-jitter"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload tab -->
+    <div id="tab-upload" class="tab-content">
+      <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept=".pcap,.pcapng,.cap" />
+        <button class="btn" onclick="event.stopPropagation(); document.getElementById('file-input').click()">Choose PCAP file</button>
+        <p>or drag and drop a .pcap / .pcapng / .cap file here</p>
+      </div>
+      <div id="upload-error"></div>
+      <div id="upload-result">
+        <div class="panel-header" style="margin-top:16px;">Analysis Results <span class="count" id="upload-stream-count">0</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Flow</th><th>Codec</th><th>Packets</th><th>Loss %</th><th>Jitter avg ms</th><th>Jitter max ms</th><th>MOS</th><th>R-Factor</th><th>Duration</th></tr></thead>
+            <tbody id="upload-body"></tbody>
+          </table>
+        </div>
+        <div style="padding:16px;">
+          <div class="charts-grid">
+            <div class="chart-card"><h3>MOS per stream</h3><canvas id="chart-upload-mos"></canvas></div>
+            <div class="chart-card"><h3>Packet loss % per stream</h3><canvas id="chart-upload-loss"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calls tab -->
+    <div id="tab-calls" class="tab-content">
+      <div class="panel-header">SIP Calls <span class="count" id="calls-count">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>State</th><th>From</th><th>To</th><th>Response</th><th>Duration</th><th>MOS</th></tr></thead>
+          <tbody id="calls-body"><tr class="empty-row"><td colspan="6">No calls yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- Tabs ----------
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ---------- Helpers ----------
+function mosPill(mos) {
+  if (!mos || mos === 0) return '<span class="mos-pill fair">N/A</span>';
+  let cls = 'bad';
+  if (mos > 4.3) cls = 'excellent';
+  else if (mos >= 4.0) cls = 'good';
+  else if (mos >= 3.6) cls = 'fair';
+  else if (mos >= 3.1) cls = 'poor';
+  return `<span class="mos-pill ${cls}">${mos.toFixed(2)}</span>`;
+}
+
+function streamRow(s) {
+  return `<tr>
+    <td>${s.flow}</td><td>${s.codec}</td><td>${s.packets}</td>
+    <td>${s.loss_pct.toFixed(2)}%</td><td>${s.jitter_avg_ms.toFixed(2)}</td><td>${s.jitter_max_ms.toFixed(2)}</td>
+    <td>${mosPill(s.mos)}</td><td>${s.r_factor.toFixed(1)}</td><td>${s.duration_s.toFixed(1)}s</td>
+  </tr>`;
+}
+
+function setBody(tbodyId, streams, emptyMsg) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = (streams && streams.length)
+    ? streams.map(streamRow).join('')
+    : `<tr class="empty-row"><td colspan="9">${emptyMsg}</td></tr>`;
+}
+
+function updateStats(stats) {
+  if (!stats) return;
+  document.getElementById('stat-total').textContent = stats.total_packets ?? '—';
+  document.getElementById('stat-rtp').textContent = stats.rtp_packets ?? '—';
+  document.getElementById('stat-active').textContent = stats.active_streams ?? '—';
+  document.getElementById('stat-completed').textContent = stats.completed_streams ?? '—';
+}
+
+// ---------- Calls ----------
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function statePill(state) {
+  const cls = String(state || '').toLowerCase();
+  return `<span class="state-pill ${cls}">${escapeHtml(state || '?')}</span>`;
+}
+
+function callMos(call) {
+  // Worst-leg MOS across correlated RTP streams (matches backend call_mos()).
+  const scores = (call.correlated || [])
+    .map(s => s.mos)
+    .filter(m => typeof m === 'number' && m > 0);
+  return scores.length ? Math.min(...scores) : null;
+}
+
+// Render one call's SIP message flow as an inline SVG ladder diagram.
+function ladderSvg(call) {
+  const msgs = call.ladder || [];
+  const leftLabel = call.from || 'caller';
+  const rightLabel = call.to || 'callee';
+  const W = 640, topPad = 46, rowH = 34, botPad = 20;
+  const H = topPad + msgs.length * rowH + botPad;
+  const xL = 130, xR = W - 130;
+
+  const trunc = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+
+  let svg = `<svg class="ladder-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  // Lifelines
+  svg += `<line class="lifeline" x1="${xL}" y1="30" x2="${xL}" y2="${H - 8}"/>`;
+  svg += `<line class="lifeline" x1="${xR}" y1="30" x2="${xR}" y2="${H - 8}"/>`;
+  svg += `<text class="lifeline-label" x="${xL}" y="18" text-anchor="middle">${escapeHtml(trunc(leftLabel, 26))}</text>`;
+  svg += `<text class="lifeline-label" x="${xR}" y="18" text-anchor="middle">${escapeHtml(trunc(rightLabel, 26))}</text>`;
+
+  msgs.forEach((m, i) => {
+    const y = topPad + i * rowH;
+    const isResp = m.dir === 'response';
+    // request: left -> right ; response: right -> left
+    const x1 = isResp ? xR : xL;
+    const x2 = isResp ? xL : xR;
+    const dir = x2 > x1 ? 1 : -1;
+    const ax = x2 - dir * 8;
+    const cls = isResp ? 'response' : '';
+    svg += `<line class="msg-line ${cls}" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"/>`;
+    // Arrowhead
+    svg += `<path class="msg-line ${cls}" fill="${isResp ? 'var(--good)' : 'var(--accent)'}" stroke="none" d="M ${x2} ${y} L ${ax} ${y - 4} L ${ax} ${y + 4} Z"/>`;
+    // Label centered above the line
+    svg += `<text class="msg-label ${cls}" x="${(x1 + x2) / 2}" y="${y - 6}" text-anchor="middle">${escapeHtml(trunc(m.label, 34))}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
+function callRow(call, idx) {
+  const mos = callMos(call);
+  const resp = call.final_status_code != null ? call.final_status_code : '—';
+  return `<tr class="call-row" data-call="${idx}">
+    <td><span class="expand-caret">▸</span> ${statePill(call.state)}</td>
+    <td>${escapeHtml(call.from)}</td>
+    <td>${escapeHtml(call.to)}</td>
+    <td>${resp}</td>
+    <td>${(call.duration ?? 0).toFixed ? call.duration.toFixed(1) : call.duration}s</td>
+    <td>${mos != null ? mosPill(mos) : '<span class="mos-pill fair">N/A</span>'}</td>
+  </tr>
+  <tr class="ladder-row" id="ladder-${idx}" style="display:none;"><td colspan="6"><div class="ladder-wrap"></div></td></tr>`;
+}
+
+let _lastCalls = [];
+function renderCalls(calls) {
+  _lastCalls = calls || [];
+  const tbody = document.getElementById('calls-body');
+  document.getElementById('calls-count').textContent = _lastCalls.length;
+  if (!_lastCalls.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">No calls yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = _lastCalls.map((c, i) => callRow(c, i)).join('');
+  // Wire up expand/collapse (lazy-render the ladder on first open).
+  tbody.querySelectorAll('tr.call-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const idx = row.dataset.call;
+      const ladderRow = document.getElementById('ladder-' + idx);
+      const open = ladderRow.style.display !== 'none';
+      if (open) {
+        ladderRow.style.display = 'none';
+        row.classList.remove('expanded');
+      } else {
+        const wrap = ladderRow.querySelector('.ladder-wrap');
+        if (!wrap.dataset.rendered) {
+          const call = _lastCalls[idx];
+          const meta = (call.media || []).map(m => `${m.address}:${m.port} (${m.type})`).join(', ');
+          wrap.innerHTML =
+            (meta ? `<div class="ladder-meta">Media: ${escapeHtml(meta)}</div>` : '') +
+            ladderSvg(call);
+          wrap.dataset.rendered = '1';
+        }
+        ladderRow.style.display = '';
+        row.classList.add('expanded');
+      }
+    });
+  });
+}
+
+function updateCallStats(callStats) {
+  if (!callStats) return;
+  document.getElementById('stat-calls').textContent = callStats.total_calls ?? '—';
+}
+
+function activateTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const tabBtn = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (tabBtn) tabBtn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ---------- Charts ----------
+const COLORS = ['#4f7ef8','#34d399','#fbbf24','#f87171','#a78bfa','#38bdf8','#fb923c'];
+const colorFor = i => COLORS[i % COLORS.length];
+
+const chartBase = {
+  responsive: true,
+  animation: { duration: 300 },
+  plugins: { legend: { labels: { color: '#8890a8', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#8890a8' }, grid: { color: '#2e3249' } },
+    y: { ticks: { color: '#8890a8' }, grid: { color: '#2e3249' } },
+  },
+};
+
+const mosHistory = {}, jitterHistory = {};
+let liveMosChart, liveJitterChart;
+
+function initLiveCharts() {
+  liveMosChart = new Chart(document.getElementById('chart-mos'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 1, max: 5 } } },
+  });
+  liveJitterChart = new Chart(document.getElementById('chart-jitter'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: chartBase,
+  });
+}
+
+function updateLiveCharts(active) {
+  active.forEach(s => {
+    const k = s.flow;
+    if (!mosHistory[k]) mosHistory[k] = [];
+    if (!jitterHistory[k]) jitterHistory[k] = [];
+    mosHistory[k].push(s.mos);
+    jitterHistory[k].push(s.jitter_avg_ms);
+    if (mosHistory[k].length > 30) { mosHistory[k].shift(); jitterHistory[k].shift(); }
+  });
+
+  const maxLen = Math.max(...Object.values(mosHistory).map(a => a.length), 1);
+  const labels = Array.from({ length: maxLen }, (_, i) => i + 1);
+
+  liveMosChart.data.labels = labels;
+  liveMosChart.data.datasets = Object.entries(mosHistory).map(([flow, data], i) => ({
+    label: flow, data, borderColor: colorFor(i), backgroundColor: 'transparent', tension: 0.3, pointRadius: 2,
+  }));
+  liveMosChart.update('none');
+
+  liveJitterChart.data.labels = labels;
+  liveJitterChart.data.datasets = Object.entries(jitterHistory).map(([flow, data], i) => ({
+    label: flow, data, borderColor: colorFor(i), backgroundColor: 'transparent', tension: 0.3, pointRadius: 2,
+  }));
+  liveJitterChart.update('none');
+}
+
+// ---------- SSE ----------
+function connectSSE() {
+  const dot = document.getElementById('live-dot');
+  const lbl = document.getElementById('live-label');
+  const es = new EventSource('/stream');
+
+  es.onopen = () => { dot.classList.add('active'); lbl.textContent = 'Connected'; };
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    setBody('active-body', d.active, 'No active streams.');
+    setBody('completed-body', d.completed, 'No completed streams yet.');
+    document.getElementById('active-count').textContent = (d.active || []).length;
+    document.getElementById('completed-count').textContent = (d.completed || []).length;
+    updateStats(d.stats);
+    updateLiveCharts(d.active || []);
+    renderCalls(d.calls || []);
+    updateCallStats(d.call_stats);
+  };
+  es.addEventListener('heartbeat', () => {});
+  es.addEventListener('done', () => { dot.classList.remove('active'); lbl.textContent = 'Capture ended'; es.close(); });
+  es.onerror = () => { dot.classList.remove('active'); lbl.textContent = 'Disconnected — retrying…'; };
+}
+
+// ---------- Upload ----------
+let uploadMosChart, uploadLossChart;
+
+function renderUploadCharts(streams) {
+  const labels = streams.map((_, i) => `S${i + 1}`);
+  if (uploadMosChart) uploadMosChart.destroy();
+  if (uploadLossChart) uploadLossChart.destroy();
+  uploadMosChart = new Chart(document.getElementById('chart-upload-mos'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'MOS', data: streams.map(s => s.mos), backgroundColor: '#4f7ef8' }] },
+    options: { ...chartBase, scales: { ...chartBase.scales, y: { ...chartBase.scales.y, min: 0, max: 5 } } },
+  });
+  uploadLossChart = new Chart(document.getElementById('chart-upload-loss'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Loss %', data: streams.map(s => s.loss_pct), backgroundColor: '#f87171' }] },
+    options: chartBase,
+  });
+}
+
+function resetDropZone() {
+  const dz = document.getElementById('drop-zone');
+  dz.innerHTML = `
+    <input type="file" id="file-input" accept=".pcap,.pcapng,.cap" />
+    <button class="btn" onclick="event.stopPropagation();document.getElementById('file-input').click()">Choose PCAP file</button>
+    <p>or drag and drop a .pcap / .pcapng / .cap file here</p>`;
+  dz.onclick = () => document.getElementById('file-input').click();
+  document.getElementById('file-input').addEventListener('change', e => { if (e.target.files[0]) analyzeFile(e.target.files[0]); });
+}
+
+async function analyzeFile(file) {
+  const errEl = document.getElementById('upload-error');
+  const resultEl = document.getElementById('upload-result');
+  errEl.style.display = 'none';
+  resultEl.style.display = 'none';
+  document.getElementById('drop-zone').innerHTML = '<span class="spinner"></span> Analyzing…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) {
+      errEl.textContent = '⚠ ' + data.error;
+      errEl.style.display = 'block';
+    } else {
+      const streams = data.streams || [];
+      document.getElementById('upload-stream-count').textContent = streams.length;
+      setBody('upload-body', streams, 'No RTP streams found.');
+      if (streams.length) renderUploadCharts(streams);
+      updateStats({ total_packets: data.total_packets, rtp_packets: data.total_packets, active_streams: 0, completed_streams: streams.length });
+      resultEl.style.display = 'block';
+      // Populate the Calls tab from the uploaded pcap.
+      const calls = data.calls || [];
+      renderCalls(calls);
+      updateCallStats({ total_calls: calls.length });
+      if (calls.length) activateTab('calls');
+    }
+  } catch (e) {
+    errEl.textContent = '⚠ Upload failed: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    resetDropZone();
+  }
+}
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) analyzeFile(e.dataTransfer.files[0]);
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) analyzeFile(e.target.files[0]);
+});
+
+// ---------- Init ----------
+initLiveCharts();
+// Skip the persistent SSE connection when ?nosse=1 (used by E2E harnesses so
+// the page reaches a settled load state instead of a perpetually-open request).
+if (!new URLSearchParams(location.search).has('nosse')) {
+  connectSSE();
+}
+</script>
+</body>
+</html>

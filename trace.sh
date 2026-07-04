@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="2.1.0"
+VERSION="2.2.0"
 WIRESHARK_BIN="wireshark"
 USE_SUDO=false
 DIRECT_MODE=false
@@ -140,9 +140,11 @@ _find_analyzer() {
     ANALYZER_PATH="python3 -m voip_analyzer"
     return 0
   fi
-  if [[ -d "$HOME/Downloads/claude/voip-analyser" ]] && \
-     PYTHONPATH="$HOME/Downloads/claude/voip-analyser" python3 -m voip_analyzer --help &>/dev/null 2>&1; then
-    export PYTHONPATH="$HOME/Downloads/claude/voip-analyser:${PYTHONPATH}"
+  # Fall back to the analyzer bundled alongside this script.
+  local bundled="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/voip-analyzer"
+  if [[ -d "$bundled" ]] && \
+     PYTHONPATH="$bundled" python3 -m voip_analyzer --help &>/dev/null 2>&1; then
+    export PYTHONPATH="$bundled:${PYTHONPATH}"
     ANALYZER_PATH="python3 -m voip_analyzer"
     return 0
   fi
@@ -155,8 +157,8 @@ case "$OUTPUT_TOOL" in
   analyzer|both|web)
     _find_analyzer || {
       echo "[ERROR] VoIP analyzer not found." >&2
-      echo "  Install: cd ~/Downloads/claude/voip-analyser && pip install -e ." >&2
-      echo "  Or specify path with -V" >&2
+      echo "  Install deps: pip install -r voip-analyzer/requirements.txt" >&2
+      echo "  Or specify the analyzer command with -V" >&2
       exit 1
     }
     ;;

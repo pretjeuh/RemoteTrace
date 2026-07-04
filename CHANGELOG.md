@@ -5,6 +5,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.0] - 2026-07-04
+
+### Added
+- **Bundled VoIP Analyzer** (`voip-analyzer/`): the analyzer RemoteTrace pipes into is now vendored in-repo — no external checkout. `trace.sh` finds it automatically alongside the script (falls back to it after a PATH lookup).
+- **SIP call analysis** in the analyzer: alongside RTP quality (jitter/loss/MOS), the dashboard now shows a **Calls** tab with per-call state (Trying/Ringing/Answered/Cancelled/Failed/Ended), SIP response codes, signaling duration, and an expandable **ladder diagram** per call.
+- **SIP↔RTP correlation**: SDP media endpoints negotiated in the SIP signaling are matched to the measured RTP streams, so each call carries its own audio-quality metrics. SDP-learned dynamic media ports are recognised even when below the RTP heuristic range.
+- **Live SIP + RTP together**: in live capture the single pcap stream is fanned out to both the RTP parser and a `tshark` SIP dissector without a second remote session, using a bounded-queue tee that favors liveness (a slow consumer never stalls the mirror).
+- SIP analysis requires `tshark` (Wireshark CLI); without it the analyzer runs RTP-only. Override the binary with `VOIP_TSHARK_PATH`.
+
+### Changed
+- `trace.sh` bumped to v2.2.0; analyzer detection now resolves the bundled `voip-analyzer/` directory instead of a hardcoded external path.
+
+### Known limitations
+- For very short live captures, a browser connecting after ingest has finished can miss the final SSE event; the identical result is available via the dashboard's PCAP upload. Continuous (`tail -f`) captures are unaffected.
+
+---
+
 ## [2.1.0] - 2026-07-04
 
 ### Added
