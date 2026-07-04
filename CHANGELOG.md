@@ -28,10 +28,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2.0.0] - 2026-06-07
 
 ### Added
-- **`RemoteTrace-Voclarion.ps1`** — Voclarion-specific Windows build:
-  - Jump host pre-configured to `***REMOVED***` (read-only in GUI)
-  - Auto-Discover Target mode: runs `f <name>` on jump host to resolve IP and credentials automatically
-  - Manual Target mode: explicit host, user, password, port
 - **`RemoteTrace.ps1`** now fully generic — no hardcoded hosts, users, or credentials
 
 ### Changed

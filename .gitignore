@@ -4,3 +4,6 @@ CLAUDE.md
 
 # Project design docs kept local, not published
 EXTENSIONS.md
+
+# Voclarion-specific build (internal, not for public repo)
+RemoteTrace-Voclarion.ps1
