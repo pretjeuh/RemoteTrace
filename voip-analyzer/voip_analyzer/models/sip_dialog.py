@@ -82,6 +82,7 @@ class SipDialog:
     messages: Tuple[SipMessage, ...] = ()
     media: Tuple[MediaDescriptor, ...] = ()
     correlated_streams: Tuple[dict, ...] = ()  # attached RTP quality dicts
+    media_duration: Optional[float] = None  # span of correlated RTP media, if any
 
     def with_message(self, message: SipMessage) -> "SipDialog":
         """Return a copy with ``message`` appended (kept in arrival order)."""
@@ -128,9 +129,12 @@ class SipDialog:
         end = self.end_time
         if end is None and self.messages:
             end = self.messages[-1].timestamp
-        if end is None:
-            return 0.0
-        return max(0.0, end - start)
+        sig = max(0.0, end - start) if end is not None else 0.0
+        # When signaling gives no meaningful length (no BYE captured), an
+        # answered call's real duration is better reflected by its media span.
+        if self.media_duration is not None and self.media_duration > sig:
+            return self.media_duration
+        return sig
 
     def media_endpoints(self) -> Set[Tuple[str, int]]:
         """Set of (ip, port) endpoints negotiated for this call's media."""

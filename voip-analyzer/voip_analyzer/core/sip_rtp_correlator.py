@@ -110,9 +110,16 @@ class SipRtpCorrelator:
                     seen_ids.add(sid)
                     matched.append(s)
             if matched:
+                spans = [_stream_time_span(s) for s in matched]
+                starts = [s for s, _ in spans if s is not None]
+                ends = [e for _, e in spans if e is not None]
+                media_duration = None
+                if starts and ends:
+                    media_duration = max(0.0, max(ends) - min(starts))
                 dialog = replace(
                     dialog,
                     correlated_streams=tuple(stream_to_dict(s) for s in matched),
+                    media_duration=media_duration,
                 )
             result.append(dialog)
         return result
