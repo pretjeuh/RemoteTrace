@@ -497,20 +497,30 @@ async function analyzeFile(file) {
   try {
     const res = await fetch('/upload', { method: 'POST', body: fd });
     const data = await res.json();
-    if (data.error) {
+    // SIP calls can exist even when there are no RTP streams (e.g. a
+    // signaling-only capture), so always render calls before treating a
+    // "no RTP" result as an error.
+    const calls = data.calls || [];
+    renderCalls(calls);
+    updateCallStats({ total_calls: calls.length });
+
+    const streams = data.streams || [];
+    document.getElementById('upload-stream-count').textContent = streams.length;
+    setBody('upload-body', streams, 'No RTP streams found.');
+    if (streams.length) renderUploadCharts(streams);
+    updateStats({ total_packets: data.total_packets ?? 0, rtp_packets: data.total_packets ?? 0, active_streams: 0, completed_streams: streams.length });
+    resultEl.style.display = 'block';
+
+    if (data.error && !calls.length) {
+      // Nothing usable at all — surface the message.
       errEl.textContent = '⚠ ' + data.error;
       errEl.style.display = 'block';
     } else {
-      const streams = data.streams || [];
-      document.getElementById('upload-stream-count').textContent = streams.length;
-      setBody('upload-body', streams, 'No RTP streams found.');
-      if (streams.length) renderUploadCharts(streams);
-      updateStats({ total_packets: data.total_packets, rtp_packets: data.total_packets, active_streams: 0, completed_streams: streams.length });
-      resultEl.style.display = 'block';
-      // Populate the Calls tab from the uploaded pcap.
-      const calls = data.calls || [];
-      renderCalls(calls);
-      updateCallStats({ total_calls: calls.length });
+      if (data.error) {
+        // RTP absent but calls found — show as an informational note, not an error.
+        errEl.textContent = 'ℹ ' + data.error + ' Showing SIP call analysis only.';
+        errEl.style.display = 'block';
+      }
       if (calls.length) activateTab('calls');
     }
   } catch (e) {
@@ -520,6 +530,12 @@ async function analyzeFile(file) {
     resetDropZone();
   }
 }
+
+// Prevent the browser from navigating to / downloading a file when a drag
+// misses the drop zone.
+['dragover', 'drop'].forEach(evt =>
+  document.addEventListener(evt, e => { e.preventDefault(); }, false)
+);
 
 const dz = document.getElementById('drop-zone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });

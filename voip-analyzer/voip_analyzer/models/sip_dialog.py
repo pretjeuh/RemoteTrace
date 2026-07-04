@@ -117,13 +117,20 @@ class SipDialog:
     def signaling_duration(self) -> float:
         """Call duration in seconds derived from signaling.
 
-        Prefers answer→end; falls back to setup→end so failed/cancelled calls
-        still report a meaningful span.
+        Measures from the call's answer (or setup, if never answered) to its
+        end. When there's no explicit end (e.g. no BYE captured), falls back to
+        the timestamp of the last SIP message seen so answered calls still show
+        a meaningful span instead of 0.
         """
         start = self.answer_time if self.answer_time is not None else self.setup_time
-        if start is None or self.end_time is None:
+        if start is None:
             return 0.0
-        return max(0.0, self.end_time - start)
+        end = self.end_time
+        if end is None and self.messages:
+            end = self.messages[-1].timestamp
+        if end is None:
+            return 0.0
+        return max(0.0, end - start)
 
     def media_endpoints(self) -> Set[Tuple[str, int]]:
         """Set of (ip, port) endpoints negotiated for this call's media."""
