@@ -178,7 +178,7 @@ class LiveStreamAnalyzer:
         try:
             loss_metrics = PacketLossAnalyzer.analyze(sorted_packets)
             stream.packet_loss_pct = loss_metrics["loss_percentage"]
-            stream.packets_lost = loss_metrics["packets_lost"]
+            stream.packets_lost = loss_metrics["lost"]
         except Exception as e:
             logger.debug(f"Packet loss calculation error: {e}")
         

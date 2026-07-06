@@ -81,6 +81,31 @@ class TestPacketLoss:
         assert result["expected"] == 4
         assert result["lost"] == 0
 
+    def test_wraparound_with_loss(self, create_rtp_packet):
+        """A gap straddling the wrap boundary is counted, not the wrap itself."""
+        # 65535, [0 missing], 1, 2 -> one packet lost, span of 4.
+        packets = [
+            create_rtp_packet(seq_num=65535, timestamp=0, arrival_time=0.0),
+            create_rtp_packet(seq_num=1, timestamp=320, arrival_time=0.04),
+            create_rtp_packet(seq_num=2, timestamp=480, arrival_time=0.06),
+        ]
+        result = PacketLossAnalyzer.analyze(packets)
+
+        assert result["expected"] == 4
+        assert result["lost"] == 1
+
+    def test_result_exposes_lost_key(self, create_rtp_packet):
+        """The result dict uses ``lost`` (callers rely on this exact key)."""
+        packets = [
+            create_rtp_packet(seq_num=i, timestamp=i * 160, arrival_time=i * 0.02)
+            for i in range(3)
+        ]
+        result = PacketLossAnalyzer.analyze(packets)
+
+        # Guards against the live-path regression where "packets_lost" was read.
+        assert "lost" in result
+        assert "packets_lost" not in result
+
 
 class TestJitter:
     """Test jitter calculation."""

@@ -45,19 +45,15 @@ class PacketLossAnalyzer:
                 "reordered": 0,
             }
 
-        # Sort packets by sequence number to analyze losses
-        sorted_packets = sorted(packets, key=lambda p: p.sequence_number)
+        # Unwrap 16-bit sequence numbers into a monotonic space, walking packets
+        # in the order supplied (callers pass arrival order). Sorting by raw
+        # sequence number breaks across a wraparound: for [65534, 65535, 0, 1]
+        # a numeric sort yields [0, 1, 65534, 65535], making the span look like
+        # ~65536 instead of 4. Unwrapping preserves the true continuity.
+        unwrapped = PacketLossAnalyzer._unwrap_sequences(packets)
 
-        first_seq = sorted_packets[0].sequence_number
-        last_seq = sorted_packets[-1].sequence_number
-
-        # Calculate expected packet count, handling 16-bit wraparound
-        expected = PacketLossAnalyzer._seq_diff(last_seq, first_seq) + 1
-
-        # Handle edge case where sequence spans full range (0 to 65535)
-        # In this case, expected would be 0 due to modulo, but we actually have 65536 packets expected
-        if expected == 0:
-            expected = 65536
+        # Expected count = span from the lowest to highest unwrapped seq.
+        expected = (max(unwrapped) - min(unwrapped)) + 1
 
         # Count received unique packets
         seq_numbers = [p.sequence_number for p in packets]
@@ -73,8 +69,12 @@ class PacketLossAnalyzer:
         # Calculate loss percentage
         loss_percentage = (lost / expected * 100) if expected > 0 else 0
 
-        # Find loss locations
-        loss_locations = PacketLossAnalyzer._identify_loss_locations(sorted_packets)
+        # Find loss locations, ordering by unwrapped sequence so the wrap point
+        # isn't misread as a huge gap.
+        seq_ordered = [
+            p for _, p in sorted(zip(unwrapped, packets), key=lambda t: t[0])
+        ]
+        loss_locations = PacketLossAnalyzer._identify_loss_locations(seq_ordered)
 
         # Detect reordered packets
         reordered = PacketLossAnalyzer._count_reordered(packets)
@@ -88,6 +88,34 @@ class PacketLossAnalyzer:
             "loss_locations": loss_locations,
             "reordered": reordered,
         }
+
+    @staticmethod
+    def _unwrap_sequences(packets: List[RTPPacket]) -> List[int]:
+        """Map 16-bit RTP sequence numbers to a continuous (non-wrapping) space.
+
+        Walks packets in supplied order, accumulating a signed per-step delta
+        (via :meth:`_seq_diff`) onto a running base. A forward wrap (65535 -> 0)
+        yields a small positive delta rather than a -65535 jump, so the returned
+        values stay monotonic through the wrap boundary.
+
+        Args:
+            packets: Packets in arrival order.
+
+        Returns:
+            One unwrapped sequence value per packet, index-aligned to ``packets``.
+        """
+        unwrapped: List[int] = []
+        running = 0
+        prev: Optional[int] = None
+        for packet in packets:
+            seq = packet.sequence_number
+            if prev is None:
+                running = seq
+            else:
+                running += PacketLossAnalyzer._seq_diff(seq, prev)
+            unwrapped.append(running)
+            prev = seq
+        return unwrapped
 
     @staticmethod
     def _seq_diff(a: int, b: int) -> int:
