@@ -180,6 +180,15 @@ class TsharkSipSource:
             self._tshark,
             "-r",
             read_target,
+        ]
+        # Live streams: force line-buffered output. Without -l, tshark
+        # block-buffers stdout and holds SIP records until ~1MB of pcap has
+        # passed through. In a live capture dominated by RTP, sparse SIP
+        # frames then never surface during a short capture, leaving the Calls
+        # tab empty. File mode flushes at EOF, so it doesn't need this.
+        if self._is_stream:
+            argv.append("-l")
+        argv += [
             "-Y",
             "sip",
             "-T",
