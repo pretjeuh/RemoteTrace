@@ -13,3 +13,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Session working docs (local only)
+SESSION_HANDOFF.md

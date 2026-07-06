@@ -231,13 +231,19 @@ _build_tcpdump_cmd() {
   fi
 }
 
-# Open a URL in the system browser (macOS / Linux)
+# Open a URL in the system browser (macOS / Linux).
+# When running under sudo, drop back to the invoking user so the browser opens
+# in their session rather than root's (where it fails silently).
 _open_browser() {
   local url="$1"
+  local runner=()
+  if [[ -n "$SUDO_USER" && "$SUDO_USER" != "root" ]]; then
+    runner=(sudo -u "$SUDO_USER")
+  fi
   if command -v open &>/dev/null; then
-    open "$url" &
+    "${runner[@]}" open "$url" &
   elif command -v xdg-open &>/dev/null; then
-    xdg-open "$url" &
+    "${runner[@]}" xdg-open "$url" &
   fi
 }
 
