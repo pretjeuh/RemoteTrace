@@ -386,6 +386,26 @@ MIT
 
 ## Release notes
 
+### [2.2.1] - 2026-07-06
+
+#### Fixed
+- **Live SIP calls now appear in the Calls tab** — the `tshark` SIP dissector runs line-buffered (`-l`) in stream mode, so SIP records surface immediately instead of block-buffering until ~1 MB of pcap has passed. Validated end-to-end against a live `tcpdump → analyzer` pipeline.
+- RTP packet-loss wraparound (16-bit sequence wrap no longer reports phantom lost packets)
+- Live packet-loss count that silently stayed 0 (swallowed `KeyError` on the loss result)
+- `-O web` browser auto-open under `sudo` now opens in the invoking user's session
+
+#### Added
+- `voip-analyzer/tools/sip_gen.py` — loopback SIP call generator for testing live capture (no root, no `sipp`/`tcpreplay`)
+
+### [2.2.0] - 2026-07-04
+
+#### Added
+- **Bundled VoIP Analyzer** (`voip-analyzer/`) — vendored in-repo; `trace.sh` finds it automatically
+- **SIP call analysis** — a **Calls** tab with per-call state (Trying/Ringing/Answered/Cancelled/Failed/Ended), response codes, signaling duration, and an expandable ladder diagram
+- **SIP↔RTP correlation** — SDP media endpoints matched to measured RTP streams so each call carries its own audio-quality metrics
+- **Live SIP + RTP together** — one pcap stream fanned out to both the RTP parser and a `tshark` SIP dissector via a liveness-favoring bounded-queue tee
+- SIP analysis requires `tshark` (Wireshark CLI); without it the analyzer runs RTP-only (`VOIP_TSHARK_PATH` overrides the binary)
+
 ### [2.1.0] - 2026-07-04
 
 #### Added

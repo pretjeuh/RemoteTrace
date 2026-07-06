@@ -8,7 +8,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$VERSION = "2.0.0"
+$VERSION = "2.2.1"
 
 # ---------- GUI ----------
 

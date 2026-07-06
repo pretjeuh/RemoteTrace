@@ -5,6 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.1] - 2026-07-06
+
+### Fixed
+- **Live SIP calls now appear in the Calls tab.** The `tshark` SIP dissector ran without line-buffered output (`-l`), so on a live capture it block-buffered stdout and held SIP records until ~1 MB of pcap had passed through. In an RTP-dominated capture the sparse SIP frames never surfaced during a short capture, leaving the Calls tab empty. Stream mode now passes `-l`; the first SIP record arrives immediately instead of after ~1 MB. Validated end-to-end against a live `tcpdump → analyzer` pipeline.
+- **RTP packet-loss wraparound.** `PacketLossAnalyzer` re-sorted packets by raw sequence number, which breaks across the 16-bit wrap (`[65534, 65535, 0, 1]` looked like a span of 65536, reporting ~65k phantom lost packets). Sequence numbers are now unwrapped into a monotonic space before computing expected/lost.
+- **Live packet-loss count silently stuck at 0.** The live analyzer read a `packets_lost` key that the loss result never contained (it returns `lost`); the resulting `KeyError` was swallowed by a bare `except`, so the live CLI's loss count never populated. Fixed to read the correct key.
+- **Browser auto-open under sudo** (`trace.sh`): `-O web` runs under `sudo` for `lo0` capture, so the auto-opened dashboard launched in root's session and failed silently. It now drops to `$SUDO_USER`.
+
+### Added
+- `voip-analyzer/tools/sip_gen.py`: a loopback SIP call generator (plain UDP, no root, no `sipp`/`tcpreplay`) for validating the live SIP capture path.
+
+---
+
 ## [2.2.0] - 2026-07-04
 
 ### Added
