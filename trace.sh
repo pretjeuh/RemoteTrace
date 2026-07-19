@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="2.2.1"
+VERSION="2.2.2"
 WIRESHARK_BIN="wireshark"
 USE_SUDO=false
 DIRECT_MODE=false

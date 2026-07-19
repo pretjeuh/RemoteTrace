@@ -5,6 +5,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.2] - 2026-07-19
+
+### Fixed
+- **Live dashboard now works with multiple clients / reconnects.** The SSE `/stream` endpoint used a single shared queue for all connected browsers, and `queue.get()` removes the item — so one client (a second tab, a reload, or a stray connection) would steal events meant for another, leaving the dashboard blank. Each client now gets its own subscriber queue, seeded with the latest snapshot so a browser connecting mid-capture renders current state immediately. This is what fixes the empty dashboard after pressing `a` to toggle the analyzer.
+- **SIP-only captures no longer starve the Calls tab.** Live events were pushed only every 25 SIP records; a whole call is ~7 records, so short/SIP-only captures never reached the threshold. Events now push on a ~1s timer.
+
+### Added
+- `voip-analyzer/tools/sip_gen.py`: `--loop`/`--gap` for continuous "busy PBX" traffic generation, and `--paced-rtp` (20 ms RTP cadence) for realistic jitter/MOS.
+
+---
+
 ## [2.2.1] - 2026-07-06
 
 ### Fixed

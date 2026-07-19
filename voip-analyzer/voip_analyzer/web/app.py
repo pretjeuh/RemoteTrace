@@ -6,6 +6,7 @@ import queue
 import tempfile
 import threading
 from pathlib import Path
+from typing import Optional
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -22,9 +23,51 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB upload limit
 
-# Global queue for pushing SSE events from the live ingest thread to browser clients.
-# Each item is a JSON-serialisable dict; None signals stream end.
-_live_event_queue: queue.Queue = queue.Queue(maxsize=512)
+# SSE fan-out. A single shared queue would let one client consume events meant
+# for another (queue.get removes the item), so each connected browser gets its
+# own subscriber queue. The ingest side broadcasts to all subscribers, and the
+# latest snapshot is retained so a client connecting mid-capture renders current
+# state immediately instead of waiting for the next push. None signals stream end.
+_subscribers: "set[queue.Queue]" = set()
+_subscribers_lock = threading.Lock()
+_latest_event: "Optional[dict]" = None
+
+
+def _subscribe() -> "queue.Queue":
+    """Register a new SSE client queue and seed it with the latest snapshot."""
+    q: "queue.Queue" = queue.Queue(maxsize=512)
+    with _subscribers_lock:
+        _subscribers.add(q)
+        if _latest_event is not None:
+            q.put_nowait(_latest_event)
+    return q
+
+
+def _unsubscribe(q: "queue.Queue") -> None:
+    """Drop a disconnected client's queue."""
+    with _subscribers_lock:
+        _subscribers.discard(q)
+
+
+def _broadcast(event: "Optional[dict]") -> None:
+    """Fan an event out to every connected client; drop oldest on a full queue."""
+    global _latest_event
+    if event is not None:
+        _latest_event = event
+    with _subscribers_lock:
+        targets = list(_subscribers)
+    for q in targets:
+        try:
+            q.put_nowait(event)
+        except queue.Full:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass
 
 
 # ---------- Helpers ----------
@@ -166,20 +209,29 @@ def upload():
 
 @app.route("/stream")
 def stream():
-    """Server-Sent Events endpoint for live capture data."""
+    """Server-Sent Events endpoint for live capture data.
+
+    Each client gets its own subscriber queue (seeded with the latest snapshot),
+    so multiple browsers/tabs can watch the same capture without stealing each
+    other's events.
+    """
     def generate():
-        while True:
-            try:
-                event = _live_event_queue.get(timeout=30)
-            except queue.Empty:
-                yield "event: heartbeat\ndata: {}\n\n"
-                continue
+        q = _subscribe()
+        try:
+            while True:
+                try:
+                    event = q.get(timeout=15)
+                except queue.Empty:
+                    yield "event: heartbeat\ndata: {}\n\n"
+                    continue
 
-            if event is None:
-                yield "event: done\ndata: {}\n\n"
-                break
+                if event is None:
+                    yield "event: done\ndata: {}\n\n"
+                    break
 
-            yield f"data: {json.dumps(event)}\n\n"
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            _unsubscribe(q)
 
     return Response(
         generate(),
@@ -221,7 +273,7 @@ def ingest_live_stream(
         logger.exception("Live ingest error")
     finally:
         _push_live_event(analyzer)
-        _live_event_queue.put(None)
+        _broadcast(None)
 
 
 # SIP analysis is optional (requires tshark). When enabled, the web command
@@ -332,17 +384,22 @@ def ingest_sip_stream(sip_analyzer, sip_source, rtp_analyzer=None) -> None:
     Pushes a live event periodically so new/updated calls reach the browser
     independently of the RTP ingest lifecycle.
     """
+    import time
+
     global _live_rtp_analyzer
     _live_rtp_analyzer = rtp_analyzer
     set_sip_analyzer(sip_analyzer)
-    processed = 0
+    # Push on a short time interval rather than every N records. A record-count
+    # throttle starves SIP-only captures (a whole call is ~7 records, never
+    # reaching a 25-record threshold), leaving the Calls tab empty until EOF —
+    # which on a live pipe never comes. A timer surfaces calls within ~1s.
+    last_push = time.time()
     try:
         for record in sip_source.iter_records():
             sip_analyzer.add_record(record)
-            processed += 1
-            # Emit an update every few records so calls appear progressively.
-            if processed % 25 == 0 and rtp_analyzer is not None:
+            if rtp_analyzer is not None and time.time() - last_push >= 1.0:
                 _push_live_event(rtp_analyzer)
+                last_push = time.time()
     except Exception:
         logger.exception("SIP ingest error")
     finally:
@@ -363,11 +420,4 @@ def _push_live_event(analyzer: LiveStreamAnalyzer) -> None:
         "calls": _correlated_calls(),
         "call_stats": _sip_analyzer.get_statistics() if _sip_analyzer else {},
     }
-    try:
-        _live_event_queue.put_nowait(event)
-    except queue.Full:
-        try:
-            _live_event_queue.get_nowait()
-        except queue.Empty:
-            pass
-        _live_event_queue.put_nowait(event)
+    _broadcast(event)

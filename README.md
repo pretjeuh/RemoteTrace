@@ -386,6 +386,15 @@ MIT
 
 ## Release notes
 
+### [2.2.2] - 2026-07-19
+
+#### Fixed
+- **Live dashboard now works with multiple clients / reconnects** — the SSE stream gives each browser its own event queue (was one shared queue that let clients steal each other's events). Fixes the empty dashboard after toggling the analyzer with `a`.
+- SIP-only captures no longer starve the Calls tab (live events push on a ~1s timer instead of every 25 records)
+
+#### Added
+- `voip-analyzer/tools/sip_gen.py`: `--loop`/`--gap` for continuous traffic and `--paced-rtp` for realistic jitter/MOS
+
 ### [2.2.1] - 2026-07-06
 
 #### Fixed
